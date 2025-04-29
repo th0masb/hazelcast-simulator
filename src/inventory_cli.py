@@ -255,11 +255,14 @@ class InventoryInstallCli:
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
                                          description='Install TLS keystore and truststore')
         parser.add_argument("--rsa-key-size", help="The key size to use when generating the key pair", default = "2048")
+        parser.add_argument("--filename-prefix", help="The prefix for TLS files copied to remote servers", default = "")
         args = parser.parse_args(argv)
         rsa_key_size = args.rsa_key_size
+        filename_prefix = args.filename_prefix
 
         log_header("Generating and installing TLS keystore and truststores")
-        cmd = f"ansible-playbook --inventory inventory.yaml {simulator_home}/playbooks/install_tls_keystores.yaml -e rsa_key_size='{rsa_key_size}'"
+        cmd = f"ansible-playbook --inventory inventory.yaml {simulator_home}/playbooks/install_tls_keystores.yaml \
+            -e rsa_key_size='{rsa_key_size}' -e filename_prefix='{filename_prefix}'"
         self._run_installation(cmd)
 
     def _run_installation(self, cmd):

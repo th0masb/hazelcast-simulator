@@ -37,9 +37,14 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.stream.IntStream;
 
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.assignKeyToIndex;
 import static com.hazelcast.simulator.utils.GeneratorUtils.generateByteArrays;
+import static java.lang.Thread.currentThread;
+import static java.util.Comparator.comparingInt;
 
 public class LongByteArrayMapTest extends HazelcastTest {
 
@@ -57,6 +62,9 @@ public class LongByteArrayMapTest extends HazelcastTest {
     private final List<List<IMap<Long, byte[]>>> maps = new ArrayList<>();
     private final Executor callerRuns = Runnable::run;
     private final Random random = new Random();
+
+    // Tracks which thread is assigned which client by its index
+    private final Map<Thread, Integer> clientIndexForThread = new ConcurrentHashMap<>();
 
     @Setup
     public void setUp() {
@@ -85,7 +93,18 @@ public class LongByteArrayMapTest extends HazelcastTest {
     }
 
     private IMap<Long, byte[]> getRandomMap() {
-        return maps.get(random.nextInt(maps.size())).get(random.nextInt(mapCount));
+        List<IMap<Long, byte[]>> mapsToSelectFrom;
+        if (maps.size() == 1) {
+            mapsToSelectFrom = maps.get(0);
+        } else {
+            Integer clientIndex = clientIndexForThread.get(currentThread());
+            mapsToSelectFrom = maps.get(clientIndex == null ? putClientForCurrentThread() : clientIndex);
+        }
+        return mapsToSelectFrom.get(random.nextInt(mapCount));
+    }
+
+    private synchronized int putClientForCurrentThread() {
+        return assignKeyToIndex(getTargetInstances().size(), currentThread(), clientIndexForThread);
     }
 
     @TimeStep(prob = -1)

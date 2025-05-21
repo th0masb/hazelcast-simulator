@@ -16,9 +16,11 @@
 
 package com.hazelcast.simulator.tests.map;
 
+import com.hazelcast.cluster.Member;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.Pipelining;
 import com.hazelcast.map.IMap;
+import com.hazelcast.partition.Partition;
 import com.hazelcast.simulator.hz.HazelcastTest;
 import com.hazelcast.simulator.probes.LatencyProbe;
 import com.hazelcast.simulator.test.BaseThreadState;
@@ -32,20 +34,25 @@ import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.stream.IntStream;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.assignKeyToIndex;
 import static com.hazelcast.simulator.utils.GeneratorUtils.generateByteArrays;
 import static java.lang.Thread.currentThread;
-import static java.util.Comparator.comparingInt;
+import static java.util.stream.Collectors.groupingBy;
 
 public class LongByteArrayMapTest extends HazelcastTest {
 
@@ -71,6 +78,7 @@ public class LongByteArrayMapTest extends HazelcastTest {
     public int fixedKeyProbability = 0;
 
     private byte[][] values;
+    private long[] fixedKeys;
     private final List<List<IMap<Long, byte[]>>> maps = new ArrayList<>();
     private final Executor callerRuns = Runnable::run;
     private final Random random = new Random();
@@ -89,6 +97,47 @@ public class LongByteArrayMapTest extends HazelcastTest {
             }
         }
         values = generateByteArrays(valueCount, minValueLength, maxValueLength);
+    }
+
+    @Prepare
+    public void prepareFixedKeys() {
+        // We want to balance the fixed keys across cluster members
+        if (fixedKeyDomain > 0) {
+            // Fetch the initialised partition table
+            Set<Partition> partitions = targetInstance.getPartitionService().getPartitions();
+            while (partitions.isEmpty()) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                partitions = targetInstance.getPartitionService().getPartitions();
+            }
+
+            int partitionCount = partitions.size();
+            if (partitionCount <= fixedKeyDomain) {
+                fixedKeys = LongStream.range(0, fixedKeyDomain).toArray();
+            } else {
+                fixedKeys = new long[fixedKeyDomain];
+                Map<Member, Integer> memberCounts = new HashMap<>();
+                partitions.stream().map(Partition::getOwner).filter(Objects::nonNull).forEach(m -> memberCounts.putIfAbsent(m, 0));
+                int keysPerMember = fixedKeyDomain / memberCounts.size();
+                int i = 0;
+                long keyCandidate = 0;
+                while (i < fixedKeys.length) {
+                    Partition partitionForKey = targetInstance.getPartitionService().getPartition(keyCandidate);
+                    int currentCount = memberCounts.get(partitionForKey.getOwner());
+                    if (currentCount < keysPerMember) {
+                        memberCounts.put(partitionForKey.getOwner(), currentCount + 1);
+                        fixedKeys[i++] = keyCandidate;
+                    }
+                    if (keyCandidate++ == 100_000) {
+                        throw new IllegalStateException("Cannot fill fixed keys");
+                    }
+                }
+            }
+        }
     }
 
     @Prepare(global = true)
@@ -121,7 +170,13 @@ public class LongByteArrayMapTest extends HazelcastTest {
 
     @TimeStep(prob = -1)
     public byte[] get(ThreadState state) {
-        return getRandomMap().get(state.fixedKeyOrRandom());
+        var map = getRandomMap();
+        boolean useFixedKey = fixedKeyDomain > 0 && state.randomInt(100) < fixedKeyProbability;
+        if (useFixedKey) {
+            return map.get(fixedKeys[state.randomInt(fixedKeyDomain)]);
+        } else {
+            return map.get(state.randomKey());
+        }
     }
 
     @TimeStep(prob = -1)

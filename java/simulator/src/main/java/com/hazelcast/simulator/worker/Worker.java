@@ -66,13 +66,13 @@ public class Worker {
     public Worker(WorkerParameters parameters) throws Exception {
         this.parameters = parameters;
         this.publicAddress = parameters.get("PUBLIC_ADDRESS");
-        this.workerAddress = SimulatorAddress.fromString(parameters.get("WORKER_ADDRESS"));
+        this.workerAddress = SimulatorAddress.fromString(parameters.get(WorkerParam.ADDRESS));
 
         this.driver = loadDriver(parameters.findDriverClass()).setAll(parameters.asMap());
         this.server = new Server("workers")
                 .setBrokerURL(localIp(), parseInt(parameters.get("AGENT_PORT")))
                 .setSelfAddress(workerAddress);
-        this.testManager = new TestManager(server, driver);
+        this.testManager = new TestManager(server, driver, new WorkerIndex(parameters));
 
         ScriptExecutor scriptExecutor = new ScriptExecutor(driver);
         server.setProcessor(new WorkerMessageHandler(this, testManager, scriptExecutor));

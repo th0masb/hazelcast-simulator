@@ -13,6 +13,7 @@ import com.hazelcast.simulator.utils.AssertTask;
 import com.hazelcast.simulator.utils.ExceptionReporter;
 import com.hazelcast.simulator.fake.FakeInstance;
 import com.hazelcast.simulator.drivers.Driver;
+import com.hazelcast.simulator.worker.WorkerIndex;
 import com.hazelcast.simulator.worker.messages.CreateTestMessage;
 import com.hazelcast.simulator.worker.messages.StartPhaseMessage;
 import com.hazelcast.simulator.worker.messages.StopRunMessage;
@@ -50,7 +51,7 @@ public class TestManagerTest {
         server = mock(Server.class);
         driver = mock(Driver.class);
         when(driver.getDriverInstance()).thenReturn(mock(FakeInstance.class));
-        manager = new TestManager(server, driver);
+        manager = new TestManager(server, driver, new WorkerIndex(0, 10));
     }
 
     @After

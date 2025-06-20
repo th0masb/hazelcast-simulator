@@ -93,11 +93,15 @@ public class WorkerParameters {
     }
 
     public int intGet(String key) {
-        return Integer.parseInt(map.get(key));
+        return Integer.parseInt(get(key));
+    }
+
+    public int intGet(WorkerParam param) {
+        return intGet(param.key);
     }
 
     public String getWorkerType() {
-        return map.get("WORKER_TYPE");
+        return get(WorkerParam.TYPE);
     }
 
     public WorkerParameters set(String key, Object value) {

@@ -21,6 +21,7 @@ import com.hazelcast.simulator.protocol.Promise;
 import com.hazelcast.simulator.protocol.Server;
 import com.hazelcast.simulator.utils.ExceptionReporter;
 import com.hazelcast.simulator.drivers.Driver;
+import com.hazelcast.simulator.worker.WorkerIndex;
 import com.hazelcast.simulator.worker.messages.CreateTestMessage;
 import com.hazelcast.simulator.worker.messages.StartPhaseMessage;
 import com.hazelcast.simulator.worker.messages.StopRunMessage;
@@ -48,10 +49,12 @@ public class TestManager {
     private final ConcurrentMap<String, TestContainer> tests = new ConcurrentHashMap<>();
     private final Server server;
     private final Driver driver;
+    private final WorkerIndex index;
 
-    public TestManager(Server server, Driver driver) {
+    public TestManager(Server server, Driver driver, WorkerIndex index) {
         this.server = server;
         this.driver = driver;
+        this.index = index;
     }
 
     public Collection<TestContainer> getContainers() {

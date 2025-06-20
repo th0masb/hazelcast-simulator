@@ -7,6 +7,7 @@ import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.utils.ExceptionReporter;
 import com.hazelcast.simulator.fake.FakeInstance;
+import com.hazelcast.simulator.worker.WorkerIndex;
 import org.junit.After;
 import org.junit.Before;
 
@@ -18,7 +19,8 @@ import static org.mockito.Mockito.mock;
 
 public abstract class TestContainer_AbstractTest {
 
-    TestContextImpl testContext = new TestContextImpl("TestContainerTest", "localhost", mock(Server.class));
+    TestContextImpl testContext = new TestContextImpl("TestContainerTest", "localhost", mock(Server.class),
+            new WorkerIndex(0, 1));
 
     TestContainer testContainer;
 

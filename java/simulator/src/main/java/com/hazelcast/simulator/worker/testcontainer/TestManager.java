@@ -49,12 +49,12 @@ public class TestManager {
     private final ConcurrentMap<String, TestContainer> tests = new ConcurrentHashMap<>();
     private final Server server;
     private final Driver driver;
-    private final WorkerIndex index;
+    private final WorkerIndex workerIndex;
 
-    public TestManager(Server server, Driver driver, WorkerIndex index) {
+    public TestManager(Server server, Driver driver, WorkerIndex workerIndex) {
         this.server = server;
         this.driver = driver;
-        this.index = index;
+        this.workerIndex = workerIndex;
     }
 
     public Collection<TestContainer> getContainers() {
@@ -75,7 +75,7 @@ public class TestManager {
 
         LOGGER.info(format("%s Initializing test %s %s%n%s", DASHES, testId, DASHES, testCase));
 
-        TestContextImpl testContext = new TestContextImpl(testId, null, server);
+        TestContextImpl testContext = new TestContextImpl(testId, null, server, workerIndex);
 
         testContainer = new TestContainer(testContext, testCase, driver.getDriverInstance());
 

@@ -5,6 +5,7 @@ import com.hazelcast.simulator.common.TestPhase;
 import com.hazelcast.simulator.protocol.Server;
 import com.hazelcast.simulator.test.annotations.StartNanos;
 import com.hazelcast.simulator.test.annotations.TimeStep;
+import com.hazelcast.simulator.worker.WorkerIndex;
 import org.junit.Test;
 
 import java.util.LinkedList;
@@ -28,7 +29,7 @@ public class TestContainer_TimeStep_StartNanosTest extends TestContainer_Abstrac
                 .setProperty("class", testInstance.getClass());
 
         TestContextImpl testContext = new TestContextImpl(
-                testCase.getId(), "localhost", mock(Server.class));
+                testCase.getId(), "localhost", mock(Server.class), new WorkerIndex(0, 1));
         TestContainer container = new TestContainer(testContext, testInstance, testCase);
 
         for (TestPhase phase : TestPhase.values()) {
@@ -53,7 +54,7 @@ public class TestContainer_TimeStep_StartNanosTest extends TestContainer_Abstrac
                 .setProperty("class", testInstance.getClass());
 
         TestContextImpl testContext = new TestContextImpl(
-                testCase.getId(), "localhost", mock(Server.class));
+                testCase.getId(), "localhost", mock(Server.class), new WorkerIndex(0, 1));
         TestContainer container = new TestContainer(testContext, testInstance, testCase);
 
         for (TestPhase phase : TestPhase.values()) {

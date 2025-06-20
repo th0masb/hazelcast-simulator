@@ -6,6 +6,7 @@ import com.hazelcast.simulator.test.StopException;
 import com.hazelcast.simulator.test.annotations.AfterRun;
 import com.hazelcast.simulator.test.annotations.BeforeRun;
 import com.hazelcast.simulator.test.annotations.TimeStep;
+import com.hazelcast.simulator.worker.WorkerIndex;
 import org.junit.Test;
 
 import java.util.LinkedList;
@@ -32,7 +33,7 @@ public class TestContainer_TimeStep_OrderTest extends TestContainer_AbstractTest
                 .setProperty("class", testInstance.getClass());
 
         TestContextImpl testContext = new TestContextImpl(
-               testCase.getId(), "localhost", mock(Server.class));
+               testCase.getId(), "localhost", mock(Server.class), new WorkerIndex(0, 1));
         final TestContainer container = new TestContainer(testContext, testInstance, testCase);
         container.invoke(SETUP);
 

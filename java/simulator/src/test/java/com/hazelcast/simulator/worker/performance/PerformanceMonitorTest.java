@@ -7,6 +7,7 @@ import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.tests.DummyTest;
 import com.hazelcast.simulator.tests.SuccessTest;
 import com.hazelcast.simulator.utils.AssertTask;
+import com.hazelcast.simulator.worker.WorkerIndex;
 import com.hazelcast.simulator.worker.messages.PerformanceStatsMessage;
 import com.hazelcast.simulator.worker.testcontainer.TestContainer;
 import com.hazelcast.simulator.worker.testcontainer.TestContextImpl;
@@ -144,7 +145,7 @@ public class PerformanceMonitorTest {
         private volatile boolean stopped = false;
 
         DelayTestContext(int delayMillis) {
-            super(TEST_NAME, "localhost", mock(Server.class));
+            super(TEST_NAME, "localhost", mock(Server.class), new WorkerIndex(0, 1));
             this.delayMillis = delayMillis;
         }
 

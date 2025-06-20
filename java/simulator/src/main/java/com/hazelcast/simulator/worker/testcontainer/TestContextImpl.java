@@ -21,6 +21,7 @@ import com.hazelcast.simulator.probes.impl.HdrLatencyProbe;
 import com.hazelcast.simulator.protocol.Server;
 import com.hazelcast.simulator.protocol.message.LogMessage;
 import com.hazelcast.simulator.test.TestContext;
+import com.hazelcast.simulator.worker.WorkerIndex;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,16 +34,20 @@ public class TestContextImpl implements TestContext {
     private final String testId;
     private final String publicIpAddress;
     private final Server server;
+    private final WorkerIndex workerIndex;
+
     private final ConcurrentMap<String, LatencyProbe> latencyProbes = new ConcurrentHashMap<>();
     private volatile boolean stopped;
     private Class latencyProbeClass;
 
     public TestContextImpl(String testId,
                            String publicIpAddress,
-                           Server server) {
+                           Server server,
+                           WorkerIndex workerIndex) {
         this.testId = testId;
         this.publicIpAddress = publicIpAddress;
         this.server = server;
+        this.workerIndex = workerIndex;
     }
 
     public void setLatencyProbeClass(Class latencyProbeClass) {

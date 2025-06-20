@@ -8,6 +8,7 @@ import com.hazelcast.simulator.test.annotations.AfterRun;
 import com.hazelcast.simulator.test.annotations.InjectTestContext;
 import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.utils.ThreadSpawner;
+import com.hazelcast.simulator.worker.WorkerIndex;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -44,7 +45,7 @@ public class PrimordialRunStrategyIntegrationTest {
                 .setProperty("class", testInstance.getClass());
 
         TestContextImpl testContext = new TestContextImpl(
-                testCase.getId(), "localhost", mock(Server.class));
+                testCase.getId(), "localhost", mock(Server.class), new WorkerIndex(0, 1));
         final TestContainer container = new TestContainer(testContext, testInstance, testCase);
         container.invoke(SETUP);
 

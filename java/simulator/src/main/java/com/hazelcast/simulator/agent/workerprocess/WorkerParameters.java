@@ -15,6 +15,8 @@
  */
 package com.hazelcast.simulator.agent.workerprocess;
 
+import com.hazelcast.simulator.worker.WorkerParam;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
@@ -86,6 +88,10 @@ public class WorkerParameters {
         return map.get(key);
     }
 
+    public String get(WorkerParam param) {
+        return get(param.key);
+    }
+
     public int intGet(String key) {
         return Integer.parseInt(map.get(key));
     }
@@ -97,6 +103,10 @@ public class WorkerParameters {
     public WorkerParameters set(String key, Object value) {
         map.put(key, "" + value);
         return this;
+    }
+
+    public WorkerParameters set(WorkerParam param, Object value) {
+        return set(param.key, value);
     }
 
     public WorkerParameters setAll(Map<String, String> items) {

@@ -21,6 +21,7 @@ import com.hazelcast.simulator.coordinator.registry.Registry;
 import com.hazelcast.simulator.coordinator.registry.WorkerData;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.utils.CommandLineExitException;
+import com.hazelcast.simulator.worker.WorkerParam;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -82,9 +83,9 @@ public final class DeploymentPlan {
             AgentData agent = workersPerAgent.agent;
             WorkerParameters workerParameters = new WorkerParameters();
             workerParameters.setAll(properties);
-            workerParameters.set("WORKER_TYPE", workerType);
-            workerParameters.set("WORKER_TYPE_INDEX", i);
-            workerParameters.set("WORKER_TYPE_COUNT", workerCount);
+            workerParameters.set(WorkerParam.TYPE, workerType);
+            workerParameters.set(WorkerParam.TYPE_INDEX, i);
+            workerParameters.set(WorkerParam.TYPE_COUNT, workerCount);
 
             workersPerAgent.registerWorker(workerParameters);
             List<WorkerParameters> workerParametersList = workerDeployment.get(agent.getAddress());

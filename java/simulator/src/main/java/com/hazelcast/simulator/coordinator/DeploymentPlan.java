@@ -83,6 +83,8 @@ public final class DeploymentPlan {
             WorkerParameters workerParameters = new WorkerParameters();
             workerParameters.setAll(properties);
             workerParameters.set("WORKER_TYPE", workerType);
+            workerParameters.set("WORKER_TYPE_INDEX", i);
+            workerParameters.set("WORKER_TYPE_COUNT", workerCount);
 
             workersPerAgent.registerWorker(workerParameters);
             List<WorkerParameters> workerParametersList = workerDeployment.get(agent.getAddress());

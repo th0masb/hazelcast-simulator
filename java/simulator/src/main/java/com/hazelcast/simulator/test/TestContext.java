@@ -16,6 +16,7 @@
 package com.hazelcast.simulator.test;
 
 import com.hazelcast.simulator.probes.LatencyProbe;
+import com.hazelcast.simulator.worker.WorkerIndex;
 
 /**
  * The TestContext is they way for a test to get access to test related
@@ -103,4 +104,9 @@ public interface TestContext {
      * @param args the arguments
      */
     void echoCoordinator(String msg, Object... args);
+
+    /**
+     * @return The unique (amongst same worker type) worker index for this process.
+     */
+    WorkerIndex getWorkerIndex();
 }

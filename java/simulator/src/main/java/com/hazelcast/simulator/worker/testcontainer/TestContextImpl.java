@@ -103,4 +103,9 @@ public class TestContextImpl implements TestContext {
         String message = format(msg, args);
         server.sendCoordinator(new LogMessage(message));
     }
+
+    @Override
+    public WorkerIndex getWorkerIndex() {
+        return workerIndex;
+    }
 }

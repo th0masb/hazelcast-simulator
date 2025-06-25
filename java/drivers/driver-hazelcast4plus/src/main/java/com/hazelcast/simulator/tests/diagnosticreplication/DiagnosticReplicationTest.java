@@ -15,8 +15,8 @@ import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
-import static com.hazelcast.simulator.tests.diagnosticreplication.WorkerDistribution.initialiseBatches;
-import static com.hazelcast.simulator.tests.diagnosticreplication.WorkerDistribution.initialiseMapKeyDomains;
+import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initialiseBatches;
+import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initialiseMapStates;
 
 public class DiagnosticReplicationTest
         extends HazelcastTest {
@@ -49,8 +49,8 @@ public class DiagnosticReplicationTest
     @Prepare
     public void prepareOperations() {
         ReplicationRecipe globalRecipe = loadGlobalReplicationRecipe();
-        mapState = initialiseMapKeyDomains(testContext.getWorkerIndex(), globalRecipe);
-        batches = initialiseBatches(testContext.getWorkerIndex(), globalRecipe);
+        mapState = initialiseMapStates(testContext.getWorkerIndex(), globalRecipe.mapSeeds());
+        batches = initialiseBatches(testContext.getWorkerIndex(), globalRecipe.batches());
         prepareCoordinationLatch();
     }
 

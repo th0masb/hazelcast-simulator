@@ -15,8 +15,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -90,7 +88,8 @@ public class DiagnosticReplicationTest
         int workerCount = testContext.getWorkerIndex().workerCount();
         for (var entry : mapState.entrySet()) {
             IMap<Long, byte[]> m = targetInstance.getMap(entry.getKey());
-            Streamer<Long, byte[]> streamer = StreamerFactory.getInstance(m, Math.max(1, DEFAULT_CONCURRENCY_LEVEL / workerCount));
+            Streamer<Long, byte[]> streamer = StreamerFactory.getInstance(m,
+                    Math.max(1, DEFAULT_CONCURRENCY_LEVEL / workerCount));
             int valueSize = entry.getValue().getValueSizeBytes();
             entry.getValue().streamKeys().forEach(key -> streamer.pushEntry(key, randomByteArray(valueSize)));
         }

@@ -5,6 +5,8 @@ import com.hazelcast.simulator.worker.WorkerIndex;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 class MapState {
     private final WorkerIndex index;
@@ -41,6 +43,10 @@ class MapState {
 
     private long transformMultipleToKey(long multiple) {
         return multiple * index.workerCount() + index.index();
+    }
+
+    LongStream streamKeys() {
+        return LongStream.range(0, size).map(this::transformMultipleToKey);
     }
 
     @Override

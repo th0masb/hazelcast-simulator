@@ -21,7 +21,7 @@ class StateDistribution {
      * @param worker The worker to compute the map states for
      * @param mapSeeds The global description of the initial map states
      */
-    static ConcurrentMap<String, MapState> initialiseMapStates(WorkerIndex worker, List<MapSeed> mapSeeds) {
+    static ConcurrentMap<String, MapState> initMapStates(WorkerIndex worker, List<MapSeed> mapSeeds) {
         ConcurrentMap<String, MapState> mapState = new ConcurrentHashMap<>();
         for (MapSeed mapSeed : mapSeeds) {
             // The map size is divided equally amongst the workers
@@ -39,7 +39,7 @@ class StateDistribution {
      * @param worker The worker to compute the map states for
      * @param globalBatches The batches describing the global operations
      */
-    static List<Batch> initialiseBatches(WorkerIndex worker, List<Batch> globalBatches) {
+    static List<Batch> initBatches(WorkerIndex worker, List<Batch> globalBatches) {
         List<Batch> batches = new ArrayList<>();
         for (Batch globalBatch : globalBatches) {
             List<Batch.MapOperation> operations = new ArrayList<>(globalBatch.operations());

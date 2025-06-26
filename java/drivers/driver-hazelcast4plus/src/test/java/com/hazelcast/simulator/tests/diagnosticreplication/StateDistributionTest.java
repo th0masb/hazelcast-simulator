@@ -19,7 +19,7 @@ public class StateDistributionTest {
 
     @Test
     public void testMapStateInitialisation() {
-        Map<String, MapState> output = StateDistribution.initialiseMapStates(index,
+        Map<String, MapState> output = StateDistribution.initMapStates(index,
                 List.of(new MapSeed("mapA", 6, 1024), new MapSeed("mapB", 10, 512), new MapSeed("mapC", 23, 2048),
                         new MapSeed("mapD", 99, 256)));
 
@@ -29,28 +29,12 @@ public class StateDistributionTest {
 
     @Test
     public void testBatchInitialisation() {
-        List<Batch> output = StateDistribution.initialiseBatches(index, List.of(
-                new Batch(
-                        List.of(
-                                new MapOperation("mapA", GET, 101),
-                                new MapOperation("mapA", PUT, 103),
-                                new MapOperation("mapB", GET, 99),
-                                new MapOperation("mapB", PUT, 1)
-                        )
-                )
-        ));
+        List<Batch> output = StateDistribution.initBatches(index, List.of(new Batch(
+                List.of(new MapOperation("mapA", GET, 101), new MapOperation("mapA", PUT, 103), new MapOperation("mapB", GET, 99),
+                        new MapOperation("mapB", PUT, 1)))));
 
-        assertThat(output).isEqualTo(List.of(
-                new Batch(
-                        List.of(
-                                new MapOperation("mapA", GET, 20),
-                                new MapOperation("mapA", PUT, 21),
-                                new MapOperation("mapB", GET, 19),
-                                new MapOperation("mapB", PUT, 1)
-                        )
-                )
-        ));
-
-
+        assertThat(output).isEqualTo(List.of(new Batch(
+                List.of(new MapOperation("mapA", GET, 20), new MapOperation("mapA", PUT, 21), new MapOperation("mapB", GET, 19),
+                        new MapOperation("mapB", PUT, 1)))));
     }
 }

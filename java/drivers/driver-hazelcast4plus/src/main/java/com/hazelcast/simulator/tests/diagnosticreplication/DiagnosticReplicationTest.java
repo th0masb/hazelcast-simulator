@@ -3,26 +3,40 @@ package com.hazelcast.simulator.tests.diagnosticreplication;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.hazelcast.cp.ICountDownLatch;
+import com.hazelcast.map.IMap;
 import com.hazelcast.simulator.hz.HazelcastTest;
 import com.hazelcast.simulator.test.annotations.Prepare;
 import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.tests.diagnosticreplication.ReplicationRecipe.Batch;
+import com.hazelcast.simulator.worker.loadsupport.Streamer;
+import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
-import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initialiseBatches;
-import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initialiseMapStates;
+import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initBatches;
+import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initMapStates;
+import static com.hazelcast.simulator.worker.loadsupport.Streamer.DEFAULT_CONCURRENCY_LEVEL;
 
 public class DiagnosticReplicationTest
         extends HazelcastTest {
 
-    private static final String COORDINATOR_NAME = "coordinator";
-    private static final String RECIPE_PATH = "upload/recipe.json";
+    private static final String COORDINATOR_LATCH_NAME = "coordinator";
+    private static final String DEFAULT_RECIPE_PATH = "upload/recipe.json";
+    private static final int DEFAULT_SYNC_TIMEOUT_SECS = 300;
+
+    private static final Logger LOGGER = LogManager.getLogger(DiagnosticReplicationTest.class);
+
+    public int workerSyncTimeoutSecs = DEFAULT_SYNC_TIMEOUT_SECS;
+    public String recipePath = DEFAULT_RECIPE_PATH;
 
     // We probably want to balance the operations across all workers so we don't have some workers doing all the removes for example
     // Is it worthwhile tracking the size of the mas across the entire run instead of just the start?
@@ -46,26 +60,60 @@ public class DiagnosticReplicationTest
     // We need the workers to start their run as closely together as possible for best replication so we use a latch
     private ICountDownLatch coordinationLatch;
 
+    // TODO
+    //  - Populate the maps with initial data
+    //  - Implement the actual test
+
     @Prepare
-    public void prepareOperations() {
+    public void prepareInitialState() {
+        LOGGER.info("Loading global replication recipe from {}", DEFAULT_RECIPE_PATH);
         ReplicationRecipe globalRecipe = loadGlobalReplicationRecipe();
-        mapState = initialiseMapStates(testContext.getWorkerIndex(), globalRecipe.mapSeeds());
-        batches = initialiseBatches(testContext.getWorkerIndex(), globalRecipe.batches());
-        prepareCoordinationLatch();
+        LOGGER.info("Initialising the map state for {} seeds", globalRecipe.mapSeeds().size());
+        mapState = initMapStates(testContext.getWorkerIndex(), globalRecipe.mapSeeds());
+        LOGGER.info("Extracting our operations from {} global batches", globalRecipe.batches());
+        batches = initBatches(testContext.getWorkerIndex(), globalRecipe.batches());
+        initCoordinationLatch();
+        populateMaps();
     }
 
-    private void prepareCoordinationLatch() {
-        coordinationLatch = targetInstance.getCPSubsystem().getCountDownLatch(COORDINATOR_NAME);
+    @Prepare(global = true)
+    public void sendTestDurationToUser() {
+        ReplicationRecipe globalRecipe = loadGlobalReplicationRecipe();
+        long expectedRuntimeMins = (globalRecipe.batchDuration().toSeconds() * globalRecipe.batches().size()) / 60;
+        testContext.echoCoordinator(
+                "SimulationDetails { mapCount=%s, batchCount=%s, batchDurationSecs=%s, expectedRunTimeMins=%s }",
+                globalRecipe.mapSeeds().size(), globalRecipe.batches().size(), globalRecipe.batchDuration().toSeconds(),
+                expectedRuntimeMins);
+    }
+
+    private void populateMaps() {
+        int workerCount = testContext.getWorkerIndex().workerCount();
+        for (var entry : mapState.entrySet()) {
+            IMap<Long, byte[]> m = targetInstance.getMap(entry.getKey());
+            Streamer<Long, byte[]> streamer = StreamerFactory.getInstance(m, Math.max(1, DEFAULT_CONCURRENCY_LEVEL / workerCount));
+            int valueSize = entry.getValue().getValueSizeBytes();
+            entry.getValue().streamKeys().forEach(key -> streamer.pushEntry(key, randomByteArray(valueSize)));
+        }
+    }
+
+    private byte[] randomByteArray(int length) {
+        byte[] result = new byte[length];
+        ThreadLocalRandom.current().nextBytes(result);
+        return result;
+    }
+
+    private void initCoordinationLatch() {
+        coordinationLatch = targetInstance.getCPSubsystem().getCountDownLatch(COORDINATOR_LATCH_NAME);
         coordinationLatch.trySetCount(testContext.getWorkerIndex().workerCount());
     }
 
     private ReplicationRecipe loadGlobalReplicationRecipe() {
-        Path recipePath = Path.of(RECIPE_PATH);
-        if (!Files.isRegularFile(recipePath)) {
-            throw new IllegalStateException("No recipe file found at " + RECIPE_PATH);
+        File recipeFile = new File(recipePath);
+        if (!recipeFile.isFile()) {
+            throw new IllegalStateException("No recipe file found at " + recipePath);
         }
         try {
-            return ReplicationRecipe.createObjectMapper().readValue(recipePath.toFile(), ReplicationRecipe.class);
+            return ReplicationRecipe.createObjectMapper().readValue(recipeFile, ReplicationRecipe.class);
         } catch (JsonParseException e) {
             throw new RuntimeException("Recipe content is not valid json", e);
         } catch (JsonMappingException e) {
@@ -77,20 +125,23 @@ public class DiagnosticReplicationTest
 
     @Run
     public void runTest() {
+
         try {
             if (!awaitWorkersReady()) {
                 throw new IllegalStateException("Could not synchronise the test start!");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            LOGGER.warn("Test interrupted while synchronising run start");
             return;
         }
 
+        LOGGER.info("Workers synchronised, beginning first simulation batch");
     }
 
     private boolean awaitWorkersReady()
             throws InterruptedException {
         coordinationLatch.countDown();
-        return coordinationLatch.await(600, TimeUnit.SECONDS);
+        return coordinationLatch.await(workerSyncTimeoutSecs, TimeUnit.SECONDS);
     }
 }

@@ -40,12 +40,10 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.stream.IntStream;
 
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.assignKeyToIndex;
 import static com.hazelcast.simulator.utils.GeneratorUtils.generateByteArrays;
 import static java.lang.Thread.currentThread;
-import static java.util.Comparator.comparingInt;
 
 public class LongByteArrayMapTest extends HazelcastTest {
 

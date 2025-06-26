@@ -27,14 +27,16 @@ import static com.hazelcast.simulator.worker.loadsupport.Streamer.DEFAULT_CONCUR
 public class DiagnosticReplicationTest
         extends HazelcastTest {
 
-    private static final String COORDINATOR_LATCH_NAME = "coordinator";
+    private static final String SYNC_LATCH_NAME = "synchronizer";
     private static final String DEFAULT_RECIPE_PATH = "upload/recipe.json";
     private static final int DEFAULT_SYNC_TIMEOUT_SECS = 300;
 
     private static final Logger LOGGER = LogManager.getLogger(DiagnosticReplicationTest.class);
 
-    public int workerSyncTimeoutSecs = DEFAULT_SYNC_TIMEOUT_SECS;
     public String recipePath = DEFAULT_RECIPE_PATH;
+    public int workerSyncTimeoutSecs = DEFAULT_SYNC_TIMEOUT_SECS;
+    public int syncFrequency = 10;
+
 
     // We probably want to balance the operations across all workers so we don't have some workers doing all the removes for example
     // Is it worthwhile tracking the size of the mas across the entire run instead of just the start?
@@ -56,7 +58,7 @@ public class DiagnosticReplicationTest
     private List<Batch> batches;
 
     // We need the workers to start their run as closely together as possible for best replication so we use a latch
-    private ICountDownLatch coordinationLatch;
+    private ICountDownLatch syncLatch;
 
     // TODO
     //  - Populate the maps with initial data
@@ -68,9 +70,9 @@ public class DiagnosticReplicationTest
         ReplicationRecipe globalRecipe = loadGlobalReplicationRecipe();
         LOGGER.info("Initialising the map state for {} seeds", globalRecipe.mapSeeds().size());
         mapState = initMapStates(testContext.getWorkerIndex(), globalRecipe.mapSeeds());
-        LOGGER.info("Extracting our operations from {} global batches", globalRecipe.batches());
+        LOGGER.info("Extracting our operations from {} global batches", globalRecipe.batches().size());
         batches = initBatches(testContext.getWorkerIndex(), globalRecipe.batches());
-        initCoordinationLatch();
+        initSyncLatch();
         populateMaps();
     }
 
@@ -101,9 +103,9 @@ public class DiagnosticReplicationTest
         return result;
     }
 
-    private void initCoordinationLatch() {
-        coordinationLatch = targetInstance.getCPSubsystem().getCountDownLatch(COORDINATOR_LATCH_NAME);
-        coordinationLatch.trySetCount(testContext.getWorkerIndex().workerCount());
+    private void initSyncLatch() {
+        syncLatch = targetInstance.getCPSubsystem().getCountDownLatch(SYNC_LATCH_NAME);
+        syncLatch.trySetCount(testContext.getWorkerIndex().workerCount());
     }
 
     private ReplicationRecipe loadGlobalReplicationRecipe() {
@@ -124,7 +126,6 @@ public class DiagnosticReplicationTest
 
     @Run
     public void runTest() {
-
         try {
             if (!awaitWorkersReady()) {
                 throw new IllegalStateException("Could not synchronise the test start!");
@@ -140,7 +141,7 @@ public class DiagnosticReplicationTest
 
     private boolean awaitWorkersReady()
             throws InterruptedException {
-        coordinationLatch.countDown();
-        return coordinationLatch.await(workerSyncTimeoutSecs, TimeUnit.SECONDS);
+        syncLatch.countDown();
+        return syncLatch.await(workerSyncTimeoutSecs, TimeUnit.SECONDS);
     }
 }

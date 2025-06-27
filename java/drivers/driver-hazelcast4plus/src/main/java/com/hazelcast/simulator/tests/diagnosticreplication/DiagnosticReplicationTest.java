@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -69,7 +68,6 @@ public class DiagnosticReplicationTest
     private ConcurrentMap<String, MapState> mapState;
     private List<Batch> batches;
     private Duration targetBatchDuration;
-//    private ConcurrentMap<Integer, byte[]> cachedValues;
 
     // We need the workers to start their run as closely together as possible for best replication so we use a latch
     private ICountDownLatch syncLatch;
@@ -83,7 +81,6 @@ public class DiagnosticReplicationTest
         LOGGER.info("Extracting our operations from {} global batches", globalRecipe.batches().size());
         batches = initBatches(testContext.getWorkerIndex(), globalRecipe.batches());
         targetBatchDuration = globalRecipe.batchDuration();
-//        cachedValues = new ConcurrentHashMap<>();
         initSyncLatch();
         populateMaps();
     }
@@ -159,7 +156,7 @@ public class DiagnosticReplicationTest
                 long timeDriftMillis = batchDuration.toMillis() - targetBatchDuration.toMillis();
                 LOGGER.info("Batch {} complete with time drift of {} ms", batchIndex, timeDriftMillis);
                 // If we finished early then wait until we expected to finish
-                Thread.sleep(Math.max(0, -timeDriftMillis));
+//                Thread.sleep(Math.max(0, -timeDriftMillis));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -183,7 +180,7 @@ public class DiagnosticReplicationTest
     // We want this method to last for the targetBatchDuration as closely as possible
     private void executeBatch(ExecutorService executor, Batch batch)
             throws InterruptedException {
-        new BatchExecutor((op, latency) -> {}, this::startOp)
+        new BatchExecutor(executor, this::startOp, (op, latency) -> {})
                 .executeBatch(batch, targetBatchDuration, operationConcurrency);
     }
 

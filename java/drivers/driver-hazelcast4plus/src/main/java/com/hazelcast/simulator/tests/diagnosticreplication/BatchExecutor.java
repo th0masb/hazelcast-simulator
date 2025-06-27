@@ -4,6 +4,7 @@ import com.hazelcast.simulator.tests.diagnosticreplication.OperationQueue.Operat
 import com.hazelcast.simulator.tests.diagnosticreplication.ReplicationRecipe.Batch;
 
 import java.time.Duration;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -11,11 +12,13 @@ import java.util.function.Function;
 
 public class BatchExecutor {
 
+    private final Executor responseExecutor;
     private final BiConsumer<Operation, Duration> latencyConsumer;
     private final Function<Operation, ActiveOperation> operationSubmitter;
 
-    public BatchExecutor(BiConsumer<Operation, Duration> latencyConsumer,
-                         Function<Operation, ActiveOperation> operationSubmitter) {
+    public BatchExecutor(Executor responseExecutor, Function<Operation, ActiveOperation> operationSubmitter,
+                         BiConsumer<Operation, Duration> latencyConsumer) {
+        this.responseExecutor = responseExecutor;
         this.latencyConsumer = latencyConsumer;
         this.operationSubmitter = operationSubmitter;
     }
@@ -37,7 +40,7 @@ public class BatchExecutor {
             }
             Operation nextOp = queue.next();
             ActiveOperation op = operationSubmitter.apply(nextOp);
-            op.operation().thenRun(() -> {
+            op.operation().thenRunAsync(() -> {
                 Duration opLatency = Duration.ofNanos(System.nanoTime() - op.start());
                 latencyConsumer.accept(nextOp, opLatency);
                 Duration durationUntilBatchEnd = Duration.ofNanos(Math.max(0, targetEnd - System.nanoTime()));
@@ -51,7 +54,7 @@ public class BatchExecutor {
                         Thread.currentThread().interrupt();
                     }
                 }
-            }).whenComplete((_v, ex) -> {
+            }, responseExecutor).whenComplete((_v, ex) -> {
                 error.compareAndSet(null, ex);
                 throttle.release();
             });

@@ -23,6 +23,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class BatchExecutorTest {
 
+    private ExecutorService responseExecutor;
+
+    @Before
+    public void setup() {
+        responseExecutor = Executors.newFixedThreadPool(5);
+    }
+
+    @After
+    public void teardown()
+            throws InterruptedException {
+        responseExecutor.shutdownNow();
+        if (!responseExecutor.awaitTermination(20, TimeUnit.SECONDS)) {
+            throw new RuntimeException("Failed to shutdown executor");
+        }
+    }
+
     @Test
     public void test()
             throws InterruptedException {
@@ -30,10 +46,10 @@ public class BatchExecutorTest {
         AtomicLong totalLatencyMillis = new AtomicLong();
 
         int operationConcurrency = 5;
-        BatchExecutor underTest = new BatchExecutor((op, latency) -> {
+        BatchExecutor underTest = new BatchExecutor(responseExecutor, this::startOp, (op, latency) -> {
             totalLatenciesProcessed.incrementAndGet();
             totalLatencyMillis.addAndGet(latency.toMillis());
-        }, this::startOp);
+        });
 
         long start = System.currentTimeMillis();
         underTest.executeBatch(new ReplicationRecipe.Batch(

@@ -21,17 +21,26 @@ class MapState {
     }
 
     long getRandomDomainKey() {
-        Random rng = ThreadLocalRandom.current();
-        return size == 0 ? rng.nextLong() : transformMultipleToKey(rng.nextLong(size));
+        if (size == 0) {
+            throw new RuntimeException("Key state is empty!");
+        }
+        return transformMultipleToKey(ThreadLocalRandom.current().nextLong(size));
     }
 
     long addNextEmptyKey() {
         return transformMultipleToKey(size++);
     }
 
-    //        long deleteLargestKey() {
-    //            return transformMultipleToKey(--size);
-    //        }
+    long deleteLargestKey() {
+        if (size == 0) {
+            throw new RuntimeException("Key state is empty!");
+        }
+        return transformMultipleToKey(--size);
+    }
+
+    long zeroKey() {
+        return transformMultipleToKey(0);
+    }
 
     long size() {
         return size;

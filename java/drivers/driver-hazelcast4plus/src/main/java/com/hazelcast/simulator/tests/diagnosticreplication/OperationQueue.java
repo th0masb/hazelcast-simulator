@@ -1,0 +1,49 @@
+package com.hazelcast.simulator.tests.diagnosticreplication;
+
+import com.hazelcast.simulator.tests.diagnosticreplication.ReplicationRecipe.Batch;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
+
+import static java.util.stream.Collectors.toCollection;
+
+public class OperationQueue {
+
+    private final List<OperationCount> operations;
+    private volatile int remainingOperations;
+
+    public record Operation(String mapName, Batch.MapOperation.Type type) {
+    }
+
+    private static class OperationCount {
+        final Operation operation;
+        int count;
+
+        public OperationCount(Batch.MapOperation source) {
+            this.operation = new Operation(source.mapName(), source.type());
+            this.count = source.count();
+        }
+    }
+
+    public OperationQueue(Batch batch) {
+        operations = batch.operations().stream().map(OperationCount::new).collect(toCollection(ArrayList::new));
+        remainingOperations = operations.stream().mapToInt(op -> op.count).sum();
+    }
+
+    public synchronized Operation next() {
+        if (operations.isEmpty()) return null;
+        int opIndex = ThreadLocalRandom.current().nextInt(operations.size());
+        OperationCount op = operations.get(opIndex);
+        op.count--;
+        remainingOperations--;
+        if (op.count == 0) {
+            operations.remove(opIndex);
+        }
+        return op.operation;
+    }
+
+    public int getRemainingOperations() {
+        return remainingOperations;
+    }
+}

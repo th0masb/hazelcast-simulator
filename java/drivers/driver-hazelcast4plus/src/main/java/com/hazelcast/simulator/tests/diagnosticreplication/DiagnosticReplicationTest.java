@@ -7,6 +7,7 @@ import com.hazelcast.map.IMap;
 import com.hazelcast.simulator.hz.HazelcastTest;
 import com.hazelcast.simulator.test.annotations.Prepare;
 import com.hazelcast.simulator.test.annotations.Run;
+import com.hazelcast.simulator.tests.diagnosticreplication.OperationQueue.Operation;
 import com.hazelcast.simulator.tests.diagnosticreplication.ReplicationRecipe.Batch;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
@@ -15,14 +16,22 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initBatches;
 import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initMapStates;
 import static com.hazelcast.simulator.worker.loadsupport.Streamer.DEFAULT_CONCURRENCY_LEVEL;
+import static java.lang.String.format;
 
 public class DiagnosticReplicationTest
         extends HazelcastTest {
@@ -30,13 +39,18 @@ public class DiagnosticReplicationTest
     private static final String SYNC_LATCH_NAME = "synchronizer";
     private static final String DEFAULT_RECIPE_PATH = "upload/recipe.json";
     private static final int DEFAULT_SYNC_TIMEOUT_SECS = 300;
+    private static final int DEFAULT_SYNC_FREQUENCY = 5;
+    private static final int EXECUTOR_SHUTDOWN_WAIT_SECS = 30;
 
     private static final Logger LOGGER = LogManager.getLogger(DiagnosticReplicationTest.class);
 
     public String recipePath = DEFAULT_RECIPE_PATH;
     public int workerSyncTimeoutSecs = DEFAULT_SYNC_TIMEOUT_SECS;
-    public int syncFrequency = 10;
-
+    public int syncFrequency = DEFAULT_SYNC_FREQUENCY;
+    public int threadCount = 10;
+    public int getHitPercentage = 95;
+    public int putHitPercentage = 60;
+    public int operationConcurrency = 20;
 
     // We probably want to balance the operations across all workers so we don't have some workers doing all the removes for example
     // Is it worthwhile tracking the size of the mas across the entire run instead of just the start?
@@ -56,13 +70,10 @@ public class DiagnosticReplicationTest
     // Initialised during setup
     private ConcurrentMap<String, MapState> mapState;
     private List<Batch> batches;
+    private Duration targetBatchDuration;
 
     // We need the workers to start their run as closely together as possible for best replication so we use a latch
     private ICountDownLatch syncLatch;
-
-    // TODO
-    //  - Populate the maps with initial data
-    //  - Implement the actual test
 
     @Prepare
     public void prepareInitialState() {
@@ -72,6 +83,7 @@ public class DiagnosticReplicationTest
         mapState = initMapStates(testContext.getWorkerIndex(), globalRecipe.mapSeeds());
         LOGGER.info("Extracting our operations from {} global batches", globalRecipe.batches().size());
         batches = initBatches(testContext.getWorkerIndex(), globalRecipe.batches());
+        targetBatchDuration = globalRecipe.batchDuration();
         initSyncLatch();
         populateMaps();
     }
@@ -124,24 +136,134 @@ public class DiagnosticReplicationTest
         }
     }
 
+    // Requirements:
+    //  - Sync all workers every n batches
+    //  - Each worker tries to stick to batch duration for each batch but allow time overrun if needed instead of
+    //    dropping ops. This choice could be configurable.
+    //  - Try and space out the requests as evenly as possible over the batch duration
+    //  - Randomise the request order
     @Run
     public void runTest() {
+        LOGGER.info("Beginning test execution");
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         try {
-            if (!awaitWorkersReady()) {
-                throw new IllegalStateException("Could not synchronise the test start!");
+            for (int batchIndex = 0; batchIndex < batches.size(); batchIndex++) {
+                if (batchIndex % syncFrequency == 0) {
+                    syncWorkers(batchIndex);
+                    LOGGER.info("Workers synchronised at batchIndex={}", batchIndex);
+                }
+                LOGGER.info("Starting operations in batch {}", batchIndex);
+                long batchStart = System.nanoTime();
+                executeBatch(executor, batches.get(batchIndex));
+                long batchDuration = System.nanoTime() - batchStart;
+                long timeDrift = batchDuration - targetBatchDuration.toNanos();
+                LOGGER.info("Batch {} complete with time drift of {} ms", batchIndex, timeDrift / 1000);
+                // If we finished early then wait until we expected to finish
+                Thread.sleep(Math.max(0, -timeDrift / 1000));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            LOGGER.warn("Test interrupted while synchronising run start");
-            return;
+            LOGGER.warn("Test interrupted prematurely");
+        } finally {
+            executor.shutdownNow();
+            try {
+                if (!executor.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS)) {
+                    LOGGER.warn("Failed to shutdown test executor after {} seconds", EXECUTOR_SHUTDOWN_WAIT_SECS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
-
-        LOGGER.info("Workers synchronised, beginning first simulation batch");
     }
 
-    private boolean awaitWorkersReady()
+    // TODO May be better to coordinate the requests from a single thread in an async manner to ensure our key domain remains
+    //  eventually consistent with the actual map domain.
+    //  Currently we could have an issue if one thread removes and another puts, the put could be written to
+    //  the socket before the remove and so the key would be absent in the actual map but present in our record
+    // We want this method to last for the targetBatchDuration as closely as possible
+    private void executeBatch(ExecutorService executor, Batch batch)
             throws InterruptedException {
+        final long start = System.nanoTime();
+        final long targetEnd = start + targetBatchDuration.toNanos();
+
+        Semaphore throttle = new Semaphore(operationConcurrency);
+        OperationQueue queue = new OperationQueue(batch);
+        AtomicReference<Throwable> error = new AtomicReference<>();
+
+        while (queue.getRemainingOperations() > 0) {
+            throttle.acquire();
+            if (error.get() != null) break;
+            Operation nextOp = queue.next();
+            long opStart = System.nanoTime();
+            startOp(nextOp).thenAcceptAsync(result -> {
+                long completedTimestamp = System.nanoTime();
+                Duration opLatency = Duration.ofNanos(completedTimestamp - opStart);
+                // TODO Record the latency
+                long nanosUntilBatchEnd = Math.max(0, targetEnd - completedTimestamp);
+                int remainingOps = queue.getRemainingOperations();
+                if (remainingOps > 0) {
+                    long nanosPerRemainingOp = (nanosUntilBatchEnd / remainingOps) * operationConcurrency;
+                    // TODO probably better to track the moving average of op latencies
+                    long nanosPause = Math.max(0, nanosPerRemainingOp - opLatency.toNanos());
+                    try {
+                        Thread.sleep(nanosPause / 1000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }, executor).whenComplete((_v, ex) -> {
+                error.compareAndSet(null, ex);
+                throttle.release();
+            });
+        }
+
+        // Wait for all operations in flight
+        // TODO Should we cancel all existing ops?
+        throttle.acquire(operationConcurrency);
+        Throwable err = error.get();
+        if (err != null) {
+            throw new RuntimeException(err);
+        }
+    }
+
+    // TODO generating byte arrays here means they are included in the latency
+    private CompletionStage<?> startOp(Operation op) {
+        IMap<Long, byte[]> m = targetInstance.getMap(op.mapName());
+        int valueSize = mapState.get(op.mapName()).getValueSizeBytes();
+        long key = chooseKey(op);
+        return switch (op.type()) {
+            case REMOVE -> m.removeAsync(key);
+            case GET -> m.getAsync(key);
+            case PUT -> m.putAsync(key, randomByteArray(valueSize));
+            case SET -> m.setAsync(key, randomByteArray(valueSize));
+        };
+    }
+
+    private long chooseKey(Operation op) {
+        Random rng = ThreadLocalRandom.current();
+        MapState state = mapState.get(op.mapName());
+        boolean isEmpty = state.size() == 0;
+        return switch (op.type()) {
+            // If there are no keys then the remove will just look at the empty 0 key
+            case REMOVE -> isEmpty ? state.zeroKey() : state.deleteLargestKey();
+            case GET -> {
+                boolean isHit = rng.nextInt(100) < getHitPercentage;
+                yield isEmpty || !isHit ? rng.nextLong() : state.getRandomDomainKey();
+            }
+            case PUT, SET -> {
+                boolean isHit = rng.nextInt(100) < putHitPercentage;
+                yield isEmpty || !isHit ? state.addNextEmptyKey() : state.getRandomDomainKey();
+            }
+        };
+    }
+
+    private void syncWorkers(int index)
+            throws InterruptedException {
+        syncLatch.trySetCount(testContext.getWorkerIndex().workerCount());
         syncLatch.countDown();
-        return syncLatch.await(workerSyncTimeoutSecs, TimeUnit.SECONDS);
+        if (!syncLatch.await(workerSyncTimeoutSecs, TimeUnit.SECONDS)) {
+            throw new RuntimeException(
+                    format("Worker sync timeout at batch %s from worker %s", index, testContext.getWorkerIndex().index()));
+        }
     }
 }

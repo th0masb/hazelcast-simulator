@@ -23,10 +23,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initBatches;
 import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initMapStates;
@@ -71,6 +69,7 @@ public class DiagnosticReplicationTest
     private ConcurrentMap<String, MapState> mapState;
     private List<Batch> batches;
     private Duration targetBatchDuration;
+//    private ConcurrentMap<Integer, byte[]> cachedValues;
 
     // We need the workers to start their run as closely together as possible for best replication so we use a latch
     private ICountDownLatch syncLatch;
@@ -84,6 +83,7 @@ public class DiagnosticReplicationTest
         LOGGER.info("Extracting our operations from {} global batches", globalRecipe.batches().size());
         batches = initBatches(testContext.getWorkerIndex(), globalRecipe.batches());
         targetBatchDuration = globalRecipe.batchDuration();
+//        cachedValues = new ConcurrentHashMap<>();
         initSyncLatch();
         populateMaps();
     }
@@ -155,11 +155,11 @@ public class DiagnosticReplicationTest
                 LOGGER.info("Starting operations in batch {}", batchIndex);
                 long batchStart = System.nanoTime();
                 executeBatch(executor, batches.get(batchIndex));
-                long batchDuration = System.nanoTime() - batchStart;
-                long timeDrift = batchDuration - targetBatchDuration.toNanos();
-                LOGGER.info("Batch {} complete with time drift of {} ms", batchIndex, timeDrift / 1000);
+                Duration batchDuration = Duration.ofNanos(System.nanoTime() - batchStart);
+                long timeDriftMillis = batchDuration.toMillis() - targetBatchDuration.toMillis();
+                LOGGER.info("Batch {} complete with time drift of {} ms", batchIndex, timeDriftMillis);
                 // If we finished early then wait until we expected to finish
-                Thread.sleep(Math.max(0, -timeDrift / 1000));
+                Thread.sleep(Math.max(0, -timeDriftMillis));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -183,60 +183,22 @@ public class DiagnosticReplicationTest
     // We want this method to last for the targetBatchDuration as closely as possible
     private void executeBatch(ExecutorService executor, Batch batch)
             throws InterruptedException {
-        final long start = System.nanoTime();
-        final long targetEnd = start + targetBatchDuration.toNanos();
-
-        Semaphore throttle = new Semaphore(operationConcurrency);
-        OperationQueue queue = new OperationQueue(batch);
-        AtomicReference<Throwable> error = new AtomicReference<>();
-
-        while (queue.getRemainingOperations() > 0) {
-            throttle.acquire();
-            if (error.get() != null) break;
-            Operation nextOp = queue.next();
-            long opStart = System.nanoTime();
-            startOp(nextOp).thenAcceptAsync(result -> {
-                long completedTimestamp = System.nanoTime();
-                Duration opLatency = Duration.ofNanos(completedTimestamp - opStart);
-                // TODO Record the latency
-                long nanosUntilBatchEnd = Math.max(0, targetEnd - completedTimestamp);
-                int remainingOps = queue.getRemainingOperations();
-                if (remainingOps > 0) {
-                    long nanosPerRemainingOp = (nanosUntilBatchEnd / remainingOps) * operationConcurrency;
-                    // TODO probably better to track the moving average of op latencies
-                    long nanosPause = Math.max(0, nanosPerRemainingOp - opLatency.toNanos());
-                    try {
-                        Thread.sleep(nanosPause / 1000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-            }, executor).whenComplete((_v, ex) -> {
-                error.compareAndSet(null, ex);
-                throttle.release();
-            });
-        }
-
-        // Wait for all operations in flight
-        // TODO Should we cancel all existing ops?
-        throttle.acquire(operationConcurrency);
-        Throwable err = error.get();
-        if (err != null) {
-            throw new RuntimeException(err);
-        }
+        new BatchExecutor((op, latency) -> {}, this::startOp)
+                .executeBatch(batch, targetBatchDuration, operationConcurrency);
     }
 
-    // TODO generating byte arrays here means they are included in the latency
-    private CompletionStage<?> startOp(Operation op) {
+    private ActiveOperation startOp(Operation op) {
         IMap<Long, byte[]> m = targetInstance.getMap(op.mapName());
         int valueSize = mapState.get(op.mapName()).getValueSizeBytes();
         long key = chooseKey(op);
-        return switch (op.type()) {
+        byte[] value = randomByteArray(valueSize);
+        long startTime = System.nanoTime();
+        return new ActiveOperation(startTime, switch (op.type()) {
             case REMOVE -> m.removeAsync(key);
             case GET -> m.getAsync(key);
-            case PUT -> m.putAsync(key, randomByteArray(valueSize));
-            case SET -> m.setAsync(key, randomByteArray(valueSize));
-        };
+            case PUT -> m.putAsync(key, value);
+            case SET -> m.setAsync(key, value);
+        });
     }
 
     private long chooseKey(Operation op) {

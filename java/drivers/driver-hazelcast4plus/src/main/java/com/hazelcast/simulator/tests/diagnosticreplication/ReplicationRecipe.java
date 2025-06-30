@@ -1,5 +1,6 @@
 package com.hazelcast.simulator.tests.diagnosticreplication;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
@@ -9,6 +10,7 @@ import java.util.List;
  * @param batchDuration The duration in which all assigned operations in a single batch should be completed
  * @param batches The sequence of operations we need to perform split into discrete batches
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ReplicationRecipe(List<MapSeed> mapSeeds, Duration batchDuration, List<Batch> batches) {
     /**
      * @param mapName

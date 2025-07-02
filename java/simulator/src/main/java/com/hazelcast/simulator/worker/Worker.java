@@ -72,7 +72,9 @@ public class Worker {
         this.server = new Server("workers")
                 .setBrokerURL(localIp(), parseInt(parameters.get("AGENT_PORT")))
                 .setSelfAddress(workerAddress);
-        this.testManager = new TestManager(server, driver, new WorkerIndex(parameters));
+
+        this.testManager = new TestManager(server, driver, new WorkerIndex(parameters),
+                Boolean.parseBoolean(parameters.get("should_nest_latency_output")));
 
         ScriptExecutor scriptExecutor = new ScriptExecutor(driver);
         server.setProcessor(new WorkerMessageHandler(this, testManager, scriptExecutor));

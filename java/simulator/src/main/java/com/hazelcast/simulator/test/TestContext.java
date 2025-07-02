@@ -18,6 +18,8 @@ package com.hazelcast.simulator.test;
 import com.hazelcast.simulator.probes.LatencyProbe;
 import com.hazelcast.simulator.worker.WorkerIndex;
 
+import java.io.File;
+
 /**
  * The TestContext is they way for a test to get access to test related
  * information. Most importantly if a test is running.
@@ -109,4 +111,9 @@ public interface TestContext {
      * @return The unique (amongst same worker type) worker index for this process.
      */
     WorkerIndex getWorkerIndex();
+
+    /**
+     * @return The directory into which the recorded latencies will be persisted
+     */
+    File getLatencyOutputDir();
 }

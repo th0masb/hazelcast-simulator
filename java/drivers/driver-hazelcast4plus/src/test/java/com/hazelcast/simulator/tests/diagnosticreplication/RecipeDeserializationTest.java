@@ -46,6 +46,5 @@ public class RecipeDeserializationTest {
                         Duration.ofMinutes(1),
                         List.of(new Batch(List.of(new MapOperation("B", GET, 76))))
                 ));
-
     }
 }

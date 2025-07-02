@@ -21,6 +21,7 @@ import com.hazelcast.simulator.protocol.Promise;
 import com.hazelcast.simulator.protocol.Server;
 import com.hazelcast.simulator.utils.ExceptionReporter;
 import com.hazelcast.simulator.drivers.Driver;
+import com.hazelcast.simulator.utils.FileUtils;
 import com.hazelcast.simulator.worker.WorkerIndex;
 import com.hazelcast.simulator.worker.messages.CreateTestMessage;
 import com.hazelcast.simulator.worker.messages.StartPhaseMessage;
@@ -28,12 +29,14 @@ import com.hazelcast.simulator.worker.messages.StopRunMessage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import static com.hazelcast.simulator.common.TestPhase.getLastTestPhase;
+import static com.hazelcast.simulator.utils.FileUtils.getUserDir;
 import static java.lang.String.format;
 
 /**
@@ -50,11 +53,13 @@ public class TestManager {
     private final Server server;
     private final Driver driver;
     private final WorkerIndex workerIndex;
+    private final boolean nestLatencyFiles;
 
-    public TestManager(Server server, Driver driver, WorkerIndex workerIndex) {
+    public TestManager(Server server, Driver driver, WorkerIndex workerIndex, boolean nestLatencyFiles) {
         this.server = server;
         this.driver = driver;
         this.workerIndex = workerIndex;
+        this.nestLatencyFiles = nestLatencyFiles;
     }
 
     public Collection<TestContainer> getContainers() {
@@ -75,7 +80,8 @@ public class TestManager {
 
         LOGGER.info(format("%s Initializing test %s %s%n%s", DASHES, testId, DASHES, testCase));
 
-        TestContextImpl testContext = new TestContextImpl(testId, null, server, workerIndex);
+        File latencyOutputDir = nestLatencyFiles ? new File(getUserDir(), "hdr." + testId) : getUserDir();
+        TestContextImpl testContext = new TestContextImpl(testId, null, server, workerIndex, latencyOutputDir);
 
         testContainer = new TestContainer(testContext, testCase, driver.getDriverInstance());
 

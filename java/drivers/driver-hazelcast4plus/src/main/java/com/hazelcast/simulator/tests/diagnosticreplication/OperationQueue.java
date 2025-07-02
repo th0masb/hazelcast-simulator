@@ -31,14 +31,28 @@ public class OperationQueue {
         remainingOperations = operations.stream().mapToInt(op -> op.count).sum();
     }
 
+    // It would be good for this to evenly distribute the operations
+    // X = [1, 1, 3, 5, 100]
+    // sum(X) = 110 is number of steps
     public synchronized Operation next() {
-        if (operations.isEmpty()) return null;
-        int opIndex = ThreadLocalRandom.current().nextInt(operations.size());
-        OperationCount op = operations.get(opIndex);
+        if (operations.isEmpty()) {
+            return null;
+        }
+        int opIndex = ThreadLocalRandom.current().nextInt(remainingOperations);
+        int typeIndex = -1;
+        int accumulation = 0;
+        for (int i = 0; i < operations.size(); i++) {
+            accumulation += operations.get(i).count;
+            if (opIndex < accumulation) {
+                typeIndex = i;
+                break;
+            }
+        }
+        OperationCount op = operations.get(typeIndex);
         op.count--;
         remainingOperations--;
         if (op.count == 0) {
-            operations.remove(opIndex);
+            operations.remove(typeIndex);
         }
         return op.operation;
     }

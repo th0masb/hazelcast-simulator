@@ -21,8 +21,10 @@ import com.hazelcast.simulator.probes.impl.HdrLatencyProbe;
 import com.hazelcast.simulator.protocol.Server;
 import com.hazelcast.simulator.protocol.message.LogMessage;
 import com.hazelcast.simulator.test.TestContext;
+import com.hazelcast.simulator.utils.FileUtils;
 import com.hazelcast.simulator.worker.WorkerIndex;
 
+import java.io.File;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -35,6 +37,7 @@ public class TestContextImpl implements TestContext {
     private final String publicIpAddress;
     private final Server server;
     private final WorkerIndex workerIndex;
+    private final File latencyOutputDir;
 
     private final ConcurrentMap<String, LatencyProbe> latencyProbes = new ConcurrentHashMap<>();
     private volatile boolean stopped;
@@ -44,10 +47,19 @@ public class TestContextImpl implements TestContext {
                            String publicIpAddress,
                            Server server,
                            WorkerIndex workerIndex) {
+        this(testId, publicIpAddress, server, workerIndex, FileUtils.getUserDir());
+    }
+
+    public TestContextImpl(String testId,
+                           String publicIpAddress,
+                           Server server,
+                           WorkerIndex workerIndex,
+                           File latencyOutputDir) {
         this.testId = testId;
         this.publicIpAddress = publicIpAddress;
         this.server = server;
         this.workerIndex = workerIndex;
+        this.latencyOutputDir = latencyOutputDir;
     }
 
     public void setLatencyProbeClass(Class latencyProbeClass) {
@@ -107,5 +119,10 @@ public class TestContextImpl implements TestContext {
     @Override
     public WorkerIndex getWorkerIndex() {
         return workerIndex;
+    }
+
+    @Override
+    public File getLatencyOutputDir() {
+        return latencyOutputDir;
     }
 }

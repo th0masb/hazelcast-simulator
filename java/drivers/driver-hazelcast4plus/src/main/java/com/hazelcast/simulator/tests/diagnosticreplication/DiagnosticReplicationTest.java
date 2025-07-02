@@ -30,6 +30,12 @@ import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribut
 import static com.hazelcast.simulator.worker.loadsupport.Streamer.DEFAULT_CONCURRENCY_LEVEL;
 import static java.lang.String.format;
 
+// Measurements:
+// We can probably reuse the existing histogram interval metrics to take detailed snapshots of the latencies for each map/operation
+// pair, although this means we will have a lot of output files, operation type * map count, we probably don't have every operation
+// for every map though so we could reduce this file count
+// TODO Write the local recipe to a file so we can inspect it
+//  Also we can create histograms by batch and compare against existing ones, there seems to be some issue
 public class DiagnosticReplicationTest
         extends HazelcastTest {
 
@@ -47,7 +53,6 @@ public class DiagnosticReplicationTest
     public int threadCount = 10;
     public int getHitPercentage = 95;
     public int putHitPercentage = 60;
-    public int operationConcurrency = 20;
 
     // We probably want to balance the operations across all workers so we don't have some workers doing all the removes for example
     // Is it worthwhile tracking the size of the mas across the entire run instead of just the start?
@@ -80,9 +85,19 @@ public class DiagnosticReplicationTest
         mapState = initMapStates(testContext.getWorkerIndex(), globalRecipe.mapSeeds());
         LOGGER.info("Extracting our operations from {} global batches", globalRecipe.batches().size());
         batches = initBatches(testContext.getWorkerIndex(), globalRecipe.batches());
+        initProbes(batches);
         targetBatchDuration = globalRecipe.batchDuration();
         initSyncLatch();
         populateMaps();
+    }
+
+    private void initProbes(List<Batch> batches) {
+        batches.stream().flatMap(batch -> batch.operations().stream()).distinct()
+               .forEach(op -> testContext.getLatencyProbe(probeName(op.mapName(), op.type()), true));
+    }
+
+    private String probeName(String mapName, Batch.MapOperation.Type type) {
+        return mapName + "-" + type;
     }
 
     @Prepare(global = true)
@@ -155,8 +170,6 @@ public class DiagnosticReplicationTest
                 Duration batchDuration = Duration.ofNanos(System.nanoTime() - batchStart);
                 long timeDriftMillis = batchDuration.toMillis() - targetBatchDuration.toMillis();
                 LOGGER.info("Batch {} complete with time drift of {} ms", batchIndex, timeDriftMillis);
-                // If we finished early then wait until we expected to finish
-//                Thread.sleep(Math.max(0, -timeDriftMillis));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -173,15 +186,14 @@ public class DiagnosticReplicationTest
         }
     }
 
-    // TODO May be better to coordinate the requests from a single thread in an async manner to ensure our key domain remains
-    //  eventually consistent with the actual map domain.
-    //  Currently we could have an issue if one thread removes and another puts, the put could be written to
-    //  the socket before the remove and so the key would be absent in the actual map but present in our record
-    // We want this method to last for the targetBatchDuration as closely as possible
     private void executeBatch(ExecutorService executor, Batch batch)
             throws InterruptedException {
-        new BatchExecutor(executor, this::startOp, (op, latency) -> {})
+        new BatchExecutor(executor, this::startOp, this::handleLatency)
                 .executeBatch(batch, targetBatchDuration, operationConcurrency);
+    }
+
+    private void handleLatency(Operation op, Duration latency) {
+        testContext.getLatencyProbe(probeName(op.mapName(), op.type())).recordValue(latency.toNanos());
     }
 
     private ActiveOperation startOp(Operation op) {

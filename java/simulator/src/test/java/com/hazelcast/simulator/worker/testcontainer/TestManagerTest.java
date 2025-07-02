@@ -51,7 +51,7 @@ public class TestManagerTest {
         server = mock(Server.class);
         driver = mock(Driver.class);
         when(driver.getDriverInstance()).thenReturn(mock(FakeInstance.class));
-        manager = new TestManager(server, driver, new WorkerIndex(0, 10));
+        manager = new TestManager(server, driver, new WorkerIndex(0, 10), false);
     }
 
     @After

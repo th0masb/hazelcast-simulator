@@ -25,6 +25,8 @@ import org.HdrHistogram.HistogramLogWriter;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -221,6 +223,10 @@ public final class TestOperationsTracker {
         String testId = testContainer.getTestCase().getId();
         try {
             File latencyFile = getLatencyFile(testId, probeName);
+            Path latencyParent = latencyFile.toPath().getParent();
+            if (latencyParent != null) {
+                Files.createDirectories(latencyParent);
+            }
             HistogramLogWriter histogramLogWriter = new HistogramLogWriter(latencyFile);
             histogramLogWriter.setBaseTime(testContainer.getRunStartedMillis());
             histogramLogWriter.outputStartTime(testContainer.getRunStartedMillis());
@@ -233,7 +239,7 @@ public final class TestOperationsTracker {
         }
     }
 
-    private static File getLatencyFile(String testId, String probeName) {
-        return new File(getUserDir(), testId + '.' + probeName + ".hdr");
+    private File getLatencyFile(String testId, String probeName) {
+        return new File(testContext.getLatencyOutputDir(), testId + '.' + probeName + ".hdr");
     }
 }

@@ -22,6 +22,7 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -158,7 +159,7 @@ public class DiagnosticReplicationTest
     @Run
     public void runTest() {
         LOGGER.info("Beginning test execution");
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(threadCount);
         try {
             for (int batchIndex = 0; batchIndex < batches.size(); batchIndex++) {
                 if (batchIndex % syncFrequency == 0) {
@@ -187,7 +188,7 @@ public class DiagnosticReplicationTest
         }
     }
 
-    private void executeBatch(ExecutorService executor, Batch batch)
+    private void executeBatch(ScheduledExecutorService executor, Batch batch)
             throws InterruptedException {
         new BatchExecutor(executor, this::startOp, this::handleLatency)
                 .executeBatch(batch, targetBatchDuration, operationConcurrency);

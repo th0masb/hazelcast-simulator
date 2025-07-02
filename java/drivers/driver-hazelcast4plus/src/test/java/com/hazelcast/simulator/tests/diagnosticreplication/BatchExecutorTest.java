@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -23,11 +24,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class BatchExecutorTest {
 
-    private ExecutorService responseExecutor;
+    private ScheduledExecutorService responseExecutor;
 
     @Before
     public void setup() {
-        responseExecutor = Executors.newFixedThreadPool(5);
+        responseExecutor = Executors.newScheduledThreadPool(5);
     }
 
     @After
@@ -57,7 +58,7 @@ public class BatchExecutorTest {
                         new MapOperation("d", REMOVE, 500))), Duration.ofSeconds(20), operationConcurrency);
         Duration actualDuration = Duration.ofNanos(System.nanoTime() - start);
         assertThat(totalLatenciesProcessed.get()).isEqualTo(2000);
-//        assertThat(totalLatencyMillis.get()).isEqualTo(20000);
+        assertThat(totalLatencyMillis.get()).isEqualTo(20000);
         //assertThat(actualDuration.toSeconds())
     }
 

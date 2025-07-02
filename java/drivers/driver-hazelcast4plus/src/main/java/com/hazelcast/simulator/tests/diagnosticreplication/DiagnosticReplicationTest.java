@@ -53,6 +53,7 @@ public class DiagnosticReplicationTest
     public int threadCount = 10;
     public int getHitPercentage = 95;
     public int putHitPercentage = 60;
+    public int operationConcurrency = 20;
 
     // We probably want to balance the operations across all workers so we don't have some workers doing all the removes for example
     // Is it worthwhile tracking the size of the mas across the entire run instead of just the start?

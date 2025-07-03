@@ -90,11 +90,9 @@ public class DiagnosticReplicationTest
      */
     public double operationVolumeScale = 1.0;
 
-    // Initialised during setup
     private ConcurrentMap<String, OwnedKeys> ownedMapKeys;
     private List<Batch> batches;
     private Duration targetBatchDuration;
-
     // We need the workers to start their run as closely together as possible for best replication so we use a latch
     private ICountDownLatch syncLatch;
 

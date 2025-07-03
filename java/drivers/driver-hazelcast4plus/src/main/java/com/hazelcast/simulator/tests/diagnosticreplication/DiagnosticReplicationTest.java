@@ -49,7 +49,9 @@ public class DiagnosticReplicationTest
 
     private static final Logger LOGGER = LogManager.getLogger(DiagnosticReplicationTest.class);
 
-    /** Relative path to the recipe file which defines the test */
+    /**
+     * Relative path to the recipe file which defines the test
+     */
     public String recipePath = "upload/recipe.json";
 
     /**
@@ -58,22 +60,34 @@ public class DiagnosticReplicationTest
      */
     public int workerSyncTimeoutSecs = 300;
 
-    /** Workers are synchronized when batch index i satisfies i % syncFrequency == 0 */
+    /**
+     * Workers are synchronized when batch index i satisfies i % syncFrequency == 0
+     */
     public int syncFrequency = 5;
 
-    /** Probability a get operation will access a populated key */
+    /**
+     * Probability a get operation will access a populated key
+     */
     public int getHitPercentage = 100;
 
-    /** Probability a put/set operation will access a populated key */
+    /**
+     * Probability a put/set operation will access a populated key
+     */
     public int putHitPercentage = 100;
 
-    /** Number of threads used to process operation responses */
+    /**
+     * Number of threads used to process operation responses
+     */
     public int threadCount = 10;
 
-    /** Max number of operations in flight at once for a single loadgenerator */
+    /**
+     * Max number of operations in flight at once for a single loadgenerator
+     */
     public int operationConcurrency = 20;
 
-    /** Scaling factor applied to the operation count for each batch to allow artificially higher/lower loads */
+    /**
+     * Scaling factor applied to the operation count for each batch to allow artificially higher/lower loads
+     */
     public double operationVolumeScale = 1.0;
 
     // Initialised during setup

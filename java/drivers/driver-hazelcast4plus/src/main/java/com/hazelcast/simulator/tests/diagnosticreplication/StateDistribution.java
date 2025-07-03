@@ -5,7 +5,9 @@ import com.hazelcast.simulator.tests.diagnosticreplication.ReplicationRecipe.Map
 import com.hazelcast.simulator.worker.WorkerIndex;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -18,25 +20,27 @@ class StateDistribution {
 
     /**
      * Partitions the map seeds in the global recipe evenly amongst all workers
-     * @param worker The worker to compute the map states for
+     *
+     * @param worker   The worker to compute the map states for
      * @param mapSeeds The global description of the initial map states
      */
-    static ConcurrentMap<String, MapState> initMapStates(WorkerIndex worker, List<MapSeed> mapSeeds) {
-        ConcurrentMap<String, MapState> mapState = new ConcurrentHashMap<>();
+    static ConcurrentMap<String, OwnedKeys> initOwnedKeys(WorkerIndex worker, Set<MapSeed> mapSeeds) {
+        ConcurrentMap<String, OwnedKeys> mapState = new ConcurrentHashMap<>();
         for (MapSeed mapSeed : mapSeeds) {
             // The map size is divided equally amongst the workers
             long globalMapSize = mapSeed.size();
             long quotient = globalMapSize / worker.workerCount();
             long remainder = globalMapSize % worker.workerCount();
             long localSize = quotient + (remainder > worker.index() ? 1 : 0);
-            mapState.put(mapSeed.mapName(), new MapState(worker, mapSeed.averageValueBytes(), localSize));
+            mapState.put(mapSeed.mapName(), new OwnedKeys(worker, mapSeed.averageValueBytes(), localSize));
         }
         return mapState;
     }
 
     /**
      * Partitions the batch operations in the global recipe evenly amongst all workers
-     * @param worker The worker to compute the map states for
+     *
+     * @param worker        The worker to compute the map states for
      * @param globalBatches The batches describing the global operations
      */
     static List<Batch> initBatches(WorkerIndex worker, List<Batch> globalBatches) {
@@ -45,7 +49,7 @@ class StateDistribution {
             List<Batch.MapOperation> operations = new ArrayList<>(globalBatch.operations());
             // The thing which matters is the order is uniform across workers
             operations.sort(comparing(op -> format("%s-%s", op.mapName(), op.type())));
-            Batch localBatch = new Batch(new ArrayList<>());
+            Batch localBatch = new Batch(new HashSet<>());
             int nextWorkerOwedExtraOp = 0;
             for (Batch.MapOperation op : operations) {
                 // Total count of this op which needs dividing between workers
@@ -73,8 +77,8 @@ class StateDistribution {
             int lastWorkerOwedExtraOp = (nextWorkerOwedExtraOp + (remainder - 1)) % worker.workerCount();
             int index = worker.index();
             // First case handles no wrap around, second case handles wrap around
-            getsExtraOp = (nextWorkerOwedExtraOp <= index && index <= lastWorkerOwedExtraOp)
-                    || (lastWorkerOwedExtraOp < nextWorkerOwedExtraOp && index <= lastWorkerOwedExtraOp);
+            getsExtraOp = (nextWorkerOwedExtraOp <= index && index <= lastWorkerOwedExtraOp) || (
+                    lastWorkerOwedExtraOp < nextWorkerOwedExtraOp && index <= lastWorkerOwedExtraOp);
         }
         return getsExtraOp;
     }

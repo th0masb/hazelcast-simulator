@@ -8,6 +8,7 @@ import org.junit.Test;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 
 import static com.hazelcast.simulator.tests.diagnosticreplication.ReplicationRecipe.Batch.MapOperation.Type.GET;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,9 +43,9 @@ public class RecipeDeserializationTest {
 
         assertThat(ReplicationRecipe.createObjectMapper().readValue(underTest, ReplicationRecipe.class))
                 .isEqualTo(new ReplicationRecipe(
-                        List.of(new MapSeed("A", 103, 1024)),
+                        Set.of(new MapSeed("A", 103, 1024)),
                         Duration.ofMinutes(1),
-                        List.of(new Batch(List.of(new MapOperation("B", GET, 76))))
+                        List.of(new Batch(Set.of(new MapOperation("B", GET, 76))))
                 ));
     }
 }

@@ -11,7 +11,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 public class BatchExecutor {
+
+    private static final long ACQUIRE_TIMEOUT_SECS = 300;
 
     private final ScheduledExecutorService responseExecutor;
     private final BiConsumer<Operation, Duration> latencyConsumer;
@@ -34,7 +38,9 @@ public class BatchExecutor {
         AtomicReference<Throwable> error = new AtomicReference<>();
 
         while (queue.getRemainingOperations() > 0) {
-            throttle.acquire();
+            if (!throttle.tryAcquire(ACQUIRE_TIMEOUT_SECS, SECONDS)) {
+                throw new IllegalStateException("Timeout on permit acquisition for submitting next operation");
+            }
             if (error.get() != null) {
                 throttle.release();
                 break;
@@ -49,22 +55,25 @@ public class BatchExecutor {
                     Duration latency = Duration.ofNanos(System.nanoTime() - op.start());
                     latencyConsumer.accept(nextOp, latency);
                     int remainingOps = queue.getRemainingOperations();
-                    Duration sleepDuration = computeSleepDuration(targetEnd, remainingOps, operationConcurrency, latency);
+                    Duration sleepDuration = computePauseDuration(targetEnd, remainingOps, operationConcurrency, latency);
+                    // Release the throttle after a pause to spread the load across the time allocated for the batch
                     responseExecutor.schedule(() -> throttle.release(), sleepDuration.toMillis(), TimeUnit.MILLISECONDS);
                 }
-            });
+            }, responseExecutor);
         }
 
-        // Wait for all operations in flight
-        // TODO Should we cancel all existing ops?
-        throttle.acquire(operationConcurrency);
-        Throwable err = error.get();
-        if (err != null) {
-            throw new RuntimeException(err);
+        // Wait for all operations in flight to complete
+        if (!throttle.tryAcquire(operationConcurrency, ACQUIRE_TIMEOUT_SECS, SECONDS)) {
+            throw new IllegalStateException("Timeout waiting for all operations to complete");
+        }
+
+        // Propagate any operation failure to stop the test
+        if (error.get() != null) {
+            throw new RuntimeException(error.get());
         }
     }
 
-    private Duration computeSleepDuration(long targetEnd, int remainingOps, int operationConcurrency, Duration opLatency) {
+    private Duration computePauseDuration(long targetEnd, int remainingOps, int operationConcurrency, Duration opLatency) {
         if (remainingOps == 0) {
             return Duration.ZERO;
         }

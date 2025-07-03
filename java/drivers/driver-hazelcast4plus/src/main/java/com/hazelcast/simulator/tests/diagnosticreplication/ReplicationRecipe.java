@@ -5,35 +5,34 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 
 /**
  * @param batchDuration The duration in which all assigned operations in a single batch should be completed
- * @param batches The sequence of operations we need to perform split into discrete batches
+ * @param batches       The ordered sequence of operation batches we need to perform
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record ReplicationRecipe(List<MapSeed> mapSeeds, Duration batchDuration, List<Batch> batches) {
+public record ReplicationRecipe(Set<MapSeed> mapSeeds, Duration batchDuration, List<Batch> batches) {
     /**
-     * @param mapName
-     * @param size
-     * @param averageValueBytes
+     * @param mapName           The map name
+     * @param size              Number of global entries in the map
+     * @param averageValueBytes Average size of entries in the map
      */
     public record MapSeed(String mapName, long size, int averageValueBytes) {
     }
 
     /**
-     * @param operations The operation definition mapped to the number of times it should be performed
+     * @param operations The set of operations in this batch
      */
-    public record Batch(List<MapOperation> operations) {
+    public record Batch(Set<MapOperation> operations) {
         /**
-         * @param mapName
-         * @param type
+         * @param mapName The map on which the operation should be performed
+         * @param type    The operation type
+         * @param count   The number of times it should be performed
          */
         public record MapOperation(String mapName, Type type, int count) {
             public enum Type {
-                GET,
-                PUT,
-                SET,
-                REMOVE,
+                GET, PUT, SET, REMOVE,
             }
         }
     }

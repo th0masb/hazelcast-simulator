@@ -31,10 +31,8 @@ public class OperationQueue {
         remainingOperations = operations.stream().mapToInt(op -> op.count).sum();
     }
 
-    // It would be good for this to evenly distribute the operations
-    // X = [1, 1, 3, 5, 100]
-    // sum(X) = 110 is number of steps
-    public synchronized Operation next() {
+    // The current approach is selecting operations with uniform distribution
+    public Operation next() {
         if (operations.isEmpty()) {
             return null;
         }

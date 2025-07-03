@@ -3,18 +3,26 @@ package com.hazelcast.simulator.tests.diagnosticreplication;
 import com.hazelcast.simulator.worker.WorkerIndex;
 
 import java.util.Objects;
-import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
-class MapState {
+/**
+ * The set of populated keys for a map owned by a single worker. Each worker is guaranteed to have
+ * mutually disjoint keysets so they can correctly maintain which keys are populated without having
+ * to synchronize with other workers. This is done by mapping each worker with index i to the set of
+ * integers n with
+ * <pre>
+ * n % workerCount == i
+ * </pre>
+ */
+class OwnedKeys {
+
     private final WorkerIndex index;
     private final int valueSizeBytes;
 
     private long size;
 
-    MapState(WorkerIndex index, int valueSizeBytes, long initialSize) {
+    OwnedKeys(WorkerIndex index, int valueSizeBytes, long initialSize) {
         this.index = index;
         this.valueSizeBytes = valueSizeBytes;
         this.size = initialSize;
@@ -63,8 +71,8 @@ class MapState {
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-        MapState mapState = (MapState) o;
-        return valueSizeBytes == mapState.valueSizeBytes && size == mapState.size && Objects.equals(index, mapState.index);
+        OwnedKeys ownedKeys = (OwnedKeys) o;
+        return valueSizeBytes == ownedKeys.valueSizeBytes && size == ownedKeys.size && Objects.equals(index, ownedKeys.index);
     }
 
     @Override

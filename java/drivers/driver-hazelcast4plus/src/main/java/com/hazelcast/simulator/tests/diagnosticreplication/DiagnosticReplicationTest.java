@@ -9,6 +9,7 @@ import com.hazelcast.simulator.test.annotations.Prepare;
 import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.tests.diagnosticreplication.OperationQueue.Operation;
 import com.hazelcast.simulator.tests.diagnosticreplication.ReplicationRecipe.Batch;
+import com.hazelcast.simulator.tests.diagnosticreplication.ReplicationRecipe.Batch.MapOperation;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import org.apache.logging.log4j.LogManager;
@@ -20,59 +21,63 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initBatches;
-import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initMapStates;
+import static com.hazelcast.simulator.tests.diagnosticreplication.StateDistribution.initOwnedKeys;
 import static com.hazelcast.simulator.worker.loadsupport.Streamer.DEFAULT_CONCURRENCY_LEVEL;
 import static java.lang.String.format;
 
-// Measurements:
-// We can probably reuse the existing histogram interval metrics to take detailed snapshots of the latencies for each map/operation
-// pair, although this means we will have a lot of output files, operation type * map count, we probably don't have every operation
-// for every map though so we could reduce this file count
-// TODO Write the local recipe to a file so we can inspect it
-//  Also we can create histograms by batch and compare against existing ones, there seems to be some issue
+/**
+ * A test which executes a preexisting {@link ReplicationRecipe} derived from some set of diagnostics to reproduce
+ * the same workload. The default location for the recipe file is "upload/recipe.json" relative to the simulation
+ * directory. Any file in the "upload" subdirectory is copied to the worker hosts by the simulator and will be
+ * available to tests.
+ * <p>
+ * The test is split into a sequence of discrete operations batches. Batch i should be executed concurrently on all
+ * workers, the loadgenerators are periodically synchronized using the CP subsystem to keep them aligned.
+ */
 public class DiagnosticReplicationTest
         extends HazelcastTest {
 
     private static final String SYNC_LATCH_NAME = "synchronizer";
-    private static final String DEFAULT_RECIPE_PATH = "upload/recipe.json";
-    private static final int DEFAULT_SYNC_TIMEOUT_SECS = 300;
-    private static final int DEFAULT_SYNC_FREQUENCY = 5;
     private static final int EXECUTOR_SHUTDOWN_WAIT_SECS = 30;
 
     private static final Logger LOGGER = LogManager.getLogger(DiagnosticReplicationTest.class);
 
-    public String recipePath = DEFAULT_RECIPE_PATH;
-    public int workerSyncTimeoutSecs = DEFAULT_SYNC_TIMEOUT_SECS;
-    public int syncFrequency = DEFAULT_SYNC_FREQUENCY;
+    /** Relative path to the recipe file which defines the test */
+    public String recipePath = "upload/recipe.json";
+
+    /**
+     * Seconds to wait when synchronizing workers, if any worker waits longer than this an exception will be thrown and the
+     * test terminated.
+     */
+    public int workerSyncTimeoutSecs = 300;
+
+    /** Workers are synchronized when batch index i satisfies i % syncFrequency == 0 */
+    public int syncFrequency = 5;
+
+    /** Probability a get operation will access a populated key */
+    public int getHitPercentage = 100;
+
+    /** Probability a put/set operation will access a populated key */
+    public int putHitPercentage = 100;
+
+    /** Number of threads used to process operation responses */
     public int threadCount = 10;
-    public int getHitPercentage = 95;
-    public int putHitPercentage = 60;
+
+    /** Max number of operations in flight at once for a single loadgenerator */
     public int operationConcurrency = 20;
 
-    // We probably want to balance the operations across all workers so we don't have some workers doing all the removes for example
-    // Is it worthwhile tracking the size of the mas across the entire run instead of just the start?
-    // The main challenge here is how to choose which key to perform an operation on and tracking the map keys so we don't e.g.
-    // have all gets on empty values. Ideally this key hit rate would be tunable at different levels of granularity.
-
-    // Is controlling the hit rate even possible without expensive synchronisation?
-    // We start with contiguous key ranges.
-    // We could assign the workers their own key ranges and track which gets were removed so they can be added again and avoid
-    // gets on removed keys, problem if maps start with small numbers of keys
-    // It would probably be better to restrict workers to the non-contiguous set by modulus and we can guarantee that workers
-    // won't step on each others keys and should be quite cheap to manage
-
-    // Basically keep a per worker stack of populated keys where puts/sets either change existing value or add to stack, ratio
-    // could be tuned. Removes just delete from head of the stack.
+    /** Scaling factor applied to the operation count for each batch to allow artificially higher/lower loads */
+    public double operationVolumeScale = 1.0;
 
     // Initialised during setup
-    private ConcurrentMap<String, MapState> mapState;
+    private ConcurrentMap<String, OwnedKeys> ownedMapKeys;
     private List<Batch> batches;
     private Duration targetBatchDuration;
 
@@ -81,16 +86,21 @@ public class DiagnosticReplicationTest
 
     @Prepare
     public void prepareInitialState() {
-        LOGGER.info("Loading global replication recipe from {}", DEFAULT_RECIPE_PATH);
+        LOGGER.info("Loading global replication recipe from {}", recipePath);
         ReplicationRecipe globalRecipe = loadGlobalReplicationRecipe();
         LOGGER.info("Initialising the map state for {} seeds", globalRecipe.mapSeeds().size());
-        mapState = initMapStates(testContext.getWorkerIndex(), globalRecipe.mapSeeds());
+        ownedMapKeys = initOwnedKeys(testContext.getWorkerIndex(), globalRecipe.mapSeeds());
         LOGGER.info("Extracting our operations from {} global batches", globalRecipe.batches().size());
-        batches = initBatches(testContext.getWorkerIndex(), globalRecipe.batches());
+        batches = initBatches(testContext.getWorkerIndex(), globalRecipe.batches()).stream().map(this::scaleOperations).toList();
         initProbes(batches);
         targetBatchDuration = globalRecipe.batchDuration();
         initSyncLatch();
-        populateMaps();
+        populateOwnedKeys();
+    }
+
+    private Batch scaleOperations(Batch input) {
+        return new Batch(input.operations().stream().map(op -> new MapOperation(op.mapName(), op.type(),
+                Math.toIntExact(Math.round(op.count() * operationVolumeScale)))).collect(Collectors.toSet()));
     }
 
     private void initProbes(List<Batch> batches) {
@@ -98,7 +108,7 @@ public class DiagnosticReplicationTest
                .forEach(op -> testContext.getLatencyProbe(probeName(op.mapName(), op.type()), true));
     }
 
-    private String probeName(String mapName, Batch.MapOperation.Type type) {
+    private String probeName(String mapName, MapOperation.Type type) {
         return mapName + "-" + type;
     }
 
@@ -112,9 +122,9 @@ public class DiagnosticReplicationTest
                 expectedRuntimeMins);
     }
 
-    private void populateMaps() {
+    private void populateOwnedKeys() {
         int workerCount = testContext.getWorkerIndex().workerCount();
-        for (var entry : mapState.entrySet()) {
+        for (var entry : ownedMapKeys.entrySet()) {
             IMap<Long, byte[]> m = targetInstance.getMap(entry.getKey());
             Streamer<Long, byte[]> streamer = StreamerFactory.getInstance(m,
                     Math.max(1, DEFAULT_CONCURRENCY_LEVEL / workerCount));
@@ -150,17 +160,12 @@ public class DiagnosticReplicationTest
         }
     }
 
-    // Requirements:
-    //  - Sync all workers every n batches
-    //  - Each worker tries to stick to batch duration for each batch but allow time overrun if needed instead of
-    //    dropping ops. This choice could be configurable.
-    //  - Try and space out the requests as evenly as possible over the batch duration
-    //  - Randomise the request order
     @Run
-    public void runTest() {
+    public void runReplication() {
         LOGGER.info("Beginning test execution");
         ScheduledExecutorService executor = Executors.newScheduledThreadPool(threadCount);
         try {
+            BatchExecutor batchExecutor = new BatchExecutor(executor, this::startOperation, this::handleLatency);
             for (int batchIndex = 0; batchIndex < batches.size(); batchIndex++) {
                 if (batchIndex % syncFrequency == 0) {
                     syncWorkers(batchIndex);
@@ -168,7 +173,7 @@ public class DiagnosticReplicationTest
                 }
                 LOGGER.info("Starting operations in batch {}", batchIndex);
                 long batchStart = System.nanoTime();
-                executeBatch(executor, batches.get(batchIndex));
+                batchExecutor.executeBatch(batches.get(batchIndex), targetBatchDuration, operationConcurrency);
                 Duration batchDuration = Duration.ofNanos(System.nanoTime() - batchStart);
                 long timeDriftMillis = batchDuration.toMillis() - targetBatchDuration.toMillis();
                 LOGGER.info("Batch {} complete with time drift of {} ms", batchIndex, timeDriftMillis);
@@ -188,19 +193,13 @@ public class DiagnosticReplicationTest
         }
     }
 
-    private void executeBatch(ScheduledExecutorService executor, Batch batch)
-            throws InterruptedException {
-        new BatchExecutor(executor, this::startOp, this::handleLatency)
-                .executeBatch(batch, targetBatchDuration, operationConcurrency);
-    }
-
     private void handleLatency(Operation op, Duration latency) {
         testContext.getLatencyProbe(probeName(op.mapName(), op.type())).recordValue(latency.toNanos());
     }
 
-    private ActiveOperation startOp(Operation op) {
+    private ActiveOperation startOperation(Operation op) {
         IMap<Long, byte[]> m = targetInstance.getMap(op.mapName());
-        int valueSize = mapState.get(op.mapName()).getValueSizeBytes();
+        int valueSize = ownedMapKeys.get(op.mapName()).getValueSizeBytes();
         long key = chooseKey(op);
         byte[] value = randomByteArray(valueSize);
         long startTime = System.nanoTime();
@@ -214,7 +213,7 @@ public class DiagnosticReplicationTest
 
     private long chooseKey(Operation op) {
         Random rng = ThreadLocalRandom.current();
-        MapState state = mapState.get(op.mapName());
+        OwnedKeys state = ownedMapKeys.get(op.mapName());
         boolean isEmpty = state.size() == 0;
         return switch (op.type()) {
             // If there are no keys then the remove will just look at the empty 0 key
